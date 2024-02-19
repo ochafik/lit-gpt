@@ -2,9 +2,12 @@
 
 import json
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
+
+import os
+fix_tokenization = os.environ.get('FIX_TOKENIZATION', '0') == '1'
 
 
 class Tokenizer:
@@ -78,6 +81,34 @@ class Tokenizer:
         # for examples that also use the Llama tokenizer, but do not have or set add_bos_token to True.
         # ex: https://huggingface.co/stabilityai/StableBeluga2/blob/main/tokenizer_config.json#L2
         return config.get("add_bos_token") is None and config.get("tokenizer_class") == "LlamaTokenizer"
+
+    def encode_qa(
+        self,
+        question: str,
+        answer: str,
+        ignore_index: int,
+        mask_inputs: bool = True,
+        device: Optional[torch.device] = None,
+        bos: Optional[bool] = None,
+        eos: bool = False,
+        max_length: int = -1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if not fix_tokenization:        
+            qa = question + answer
+            encoded_question = self.encode(question, max_length=max_length)
+            encoded_qa = self.encode(qa, eos=eos, max_length=max_length)
+        else:
+            encoded_question = self.encode(question, device=device, bos=bos, eos=False, max_length=max_length)
+            encoded_answer = self.encode(answer, device=device, bos=False, eos=eos, max_length=max_length-len(encoded_question))
+            # concatenate both encodings
+            encoded_qa = torch.cat((encoded_question, encoded_answer), 0)
+
+        # The labels are the full prompt with response, but with the prompt masked out
+        # TODO: pad left of encoded_answer with zeroes instead?
+        labels = encoded_qa.clone()
+        if mask_inputs:
+            labels[: len(encoded_question)] = ignore_index
+        return (encoded_qa, labels)
 
     def encode(
         self,

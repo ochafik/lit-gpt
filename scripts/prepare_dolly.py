@@ -111,14 +111,9 @@ def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_in
     in the label that correspond to the original input prompt get masked out (default).
     """
     full_prompt = generate_prompt(example)
-    full_prompt_and_response = full_prompt + example["output"]
-    encoded_full_prompt = tokenizer.encode(full_prompt, max_length=max_length)
-    encoded_full_prompt_and_response = tokenizer.encode(full_prompt_and_response, eos=True, max_length=max_length)
+    response = example["output"]
 
-    # The labels are the full prompt with response, but with the prompt masked out
-    labels = encoded_full_prompt_and_response.clone()
-    if mask_inputs:
-        labels[: len(encoded_full_prompt)] = ignore_index
+    (encoded_full_prompt_and_response, labels) = tokenizer.encode_qa(full_prompt, response, ignore_index, mask_inputs, eos=True, max_length=max_length)
 
     return {**example, "input_ids": encoded_full_prompt_and_response, "labels": labels}
 
